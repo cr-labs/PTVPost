@@ -1,0 +1,118 @@
+#!/bin/bash
+
+
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+# PRINT A PROOFSHEET FOR A VIDEO FILE
+#
+# call it like this:
+# ./ptvproofsheet [path]sourcefile [outpath]
+# where:
+# 	filename is the optional path and required filename of the video file to be compressed
+#	outpath is the optional path where the compressed file should be written; if omitted, the current directory is used
+#
+# The proofsheet's file name will be extended with "_ps.jpg"
+# For example, when used with "amovie.mov" the proof sheet will be named:
+#		amovie_ps.jpg
+# The command line for the above would look like this:
+#	ptvproofsheet amovie.mov 
+#
+# If a file with the same name as the computed output file name exists, that file will be replaced.
+#
+# requires qt_tools to installed and visible in the path. Uses qt_proofsheet from that package
+#
+# qt_tools:	http://omino.com/sw/qt_tools/
+#
+# REVISION HISTORY
+# Created 2009-06-20 by Jim Youll
+# 2009-06-21 using ptvconfig.sh for paths now, no local settings
+#
+
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+
+echo "ptvproofsheet - PTV's QuickTime command line video proof sheet maker"
+
+# constants
+framesperrow=4
+duration=1200
+framerate=0.0166666
+
+
+# script must be called with one or two parameters
+if [ $# != 1 -a $# != 2 ]
+then
+	echo "Error: Call the script with the source file and optional output path:"
+	echo "     ptvproofsheet [path]sourcefile [outpath]"
+	exit 1
+fi
+
+sourcefile=$1
+
+# Pull out the elements of the path and name
+# if the filename is just a bare filename with no path, prefix with "./" to simplify later parsing
+firstchar=${sourcefile:0:1}
+if [ $firstchar != '.' -a $firstchar != '/' ]
+then
+	sourcefile='./'$sourcefile
+fi
+
+filenamewithext=${sourcefile##*\/}
+filenamenoext=${filenamewithext%\.*}
+filepath=${sourcefile%/$filenamewithext}
+
+if [ $# = 2 ]
+then
+	outpath=$2
+else
+	outpath=$filepath
+fi
+
+# derived values
+outfile=$outpath/$filenamenoext\_ps.jpg
+
+# The source file must exist and be readable
+if [ ! -r "$sourcefile" ]
+then
+	echo "Error: source file '$sourcefile' does not exist or is not readable."
+	echo "Check file name and permissions. File's directory entry:"
+	echo `ls -la "$sourcefile"`
+	exit 1
+fi
+
+# If an output directory was specified, it must exist
+if [ ! -d "$outpath" ]
+then
+	echo "Error: Output path '$outpath' is not a directory."
+	exit 1
+fi
+
+echo -e	"Compression files and paths:\n"
+echo -e	"source file		$sourcefile\n"
+echo -e	"output path		$outpath\n"
+echo -e	"output file		$outfile\n"
+echo
+
+# do it!
+$EXEPATH/qt_proofsheet --framesperrow=$framesperrow --duration=$duration --framerate=$framerate --replacefile "$sourcefile" "$outfile"

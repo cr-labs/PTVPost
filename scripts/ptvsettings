@@ -1,0 +1,89 @@
+#!/bin/bash
+
+
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+
+# REVISE QUICKTIME SETTINGS FILE
+# This script allows revision of QuickTime settings files used by the compression
+# scripts in our automated post-production system.
+#
+# call it like this:
+# ./ptvsettings filename
+# where filename is the optional path and required filename of the configuration file to be revised (or created)
+# the script will open Quicktime's settings. Set all the conversion settings and save them.
+# The config file will be saved with the new settings, for use by compression scripts.
+# If the file does not exist, it will be created
+#
+# Exits with status 0 on successful completion, 1 if an error occurred, or -1 if the user cancels
+#
+# requires qt_tools to installed and visible in the path. Uses qt_export from that package
+#
+# qt_tools:	http://omino.com/sw/qt_tools/
+#
+# REVISION HISTORY
+# Created 2009-06-20 by Jim Youll
+#
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+
+echo "ptvsettings - PTV's QuickTime configuration file updater"
+
+# script must be called with one parameter - the config file to be revised. 
+# If it does not exist, it will be created
+if [ $# != 1 ]
+then
+	echo "Error: Call the script with config file name (with optional path), like this:"
+	echo "     ptvsettings [path]mysettings.cfg"
+	exit 1
+fi
+
+configfile=$1
+
+# If the file exists, it must be writeable.
+if [ -f $configfile ]
+then
+	if [ ! -w "$configfile" -o ! -r "$configfile" ]
+	then
+		echo "Error: file '$configfile' exists but is not writeable, not readable, or both."
+		echo "Check file permissions. File's directory entry:"
+		echo `ls -la $configfile`
+		exit 1
+	fi
+	# file exists and is writeable, so call the script configuration to open it, revise, and save
+	echo "Configuration file '$configfile' exists. Opening."
+	$EXEPATH/qt_export --loadsettings="$configfile" --dodialog --savesettings="$configfile" --replacefile
+else
+	echo "Configuration file does not exist. Will create '$configfile'"
+	touch $configfile
+	if [ $? != 0 ]
+	then
+		echo "Error: could not create file '$configfile'"
+		exit 1
+	fi
+	# file can be created, so call the script config to get settings and save them
+	$EXEPATH/qt_export --dodialog --savesettings="$configfile"
+fi
+
+

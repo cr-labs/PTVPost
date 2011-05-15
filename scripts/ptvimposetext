@@ -1,0 +1,168 @@
+#!/bin/bash
+
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+
+# PTV Text imposer - write some text onto a still image
+# This script is used to create production logos that are then extended into video files
+# ImageMagick must be installed and reachable via constants defined in ptvconfig
+#
+# to call:
+# ./ptvimposetext -s sourcefile -o outfile -t text [-c color] [-x xpos] [-y ypos] [-z fontsize]
+# 	-c color: hex color "#rrggbb" or rgb(r,g,b)
+#	-x xpos: pixels
+#	-y ypos: pixels
+#	-z fontsize: points
+#
+# example: scripts/ptvimposetext -t "HEY YOU" -s original.jpg -o newimage.jpg -x 10 -y 400 -z 50 -c "#FF9911
+#
+# DEFAULTS for optional parameters:
+# textcolor		#FFFFFF
+# xpos			100
+# ypos			100
+# fontsize		12pt
+
+# REVISION HISTORY
+# Created 2009-07-10 by Jim Youll
+
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+
+DEFAULT_TEXTCOLOR="#FFFFFF"
+DEFAULT_XPOS="100"
+DEFAULT_YPOS="100"
+DEFAULT_FONTSIZE="12"
+
+echo "ptvimposetext - PTV's image+text script"
+
+# set defaults that will be overridden if command line params are found
+textcolor=$DEFAULT_TEXTCOLOR
+textxpos=$DEFAULT_XPOS
+textypos=$DEFAULT_YPOS
+textfontsize=$DEFAULT_FONTSIZE
+
+
+# Retrieve command line parameters and check for completeness
+while getopts c:x:y:z:s:o:t: options 2> /dev/null    # s: means the letter 's' is expected, AND it requires an argument
+do
+	case $options in
+		c)
+	   		textcolor="$OPTARG"
+	   		;;
+		x) 
+			textxpos="$OPTARG"
+	   		;;
+		y) 
+			textypos="$OPTARG"
+	   		;;
+		z) 
+			textfontsize="$OPTARG"
+	   		;;
+	   	s) 
+	   		sourcefile="$OPTARG"
+	   		;;
+	   	o) 
+	   		outfile="$OPTARG"
+	   		;;
+	   	t) 
+	   		text="$OPTARG"
+	   		;;
+	  	\?) echo "Usage: ptvimposetext -s sourcefile -o outfile -t text [-c color] [-x xpos] [-y ypos] [-z fontsize]" 2>& 1
+	  		exit 0;
+	  		;;
+	esac
+done
+    
+echo "sourcefile: $sourcefile"
+echo "outfile: $outfile"
+echo "text: $text"
+echo "color: $textcolor"
+echo "xpos: $textxpos"
+echo "ypos: $textypos"
+echo "fontsize: $textfontsize"
+echo
+
+
+
+# Sourcefile must exist 
+if [ ! -r "$sourcefile" ]
+then
+	errmsg="Error: source file '$sourcefile' was not specified or is not readable"
+	if [ ! -z "$sourcefile" ]
+	then
+		errmsg=$errmsg"\nCheck file name and permissions. File's directory entry:"
+		errmsg=$errmsg"\n"`ls -la "$sourcefile"`
+	fi
+	errmsg=$errmsg"\nUsage: ptvimposetext -s sourcefile -o outfile -t text [-c color] [-x xpos] [-y ypos] [-z fontsize]"
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvimposetext"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+# Outfile must have been provided 
+if [ -z "$outfile" ]
+then
+	errmsg="Error: an output file must be specified using the -o parameter"
+	errmsg=$errmsg"\nUsage: ptvimposetext -s sourcefile -o outfile -t text [-c color] [-x xpos] [-y ypos] [-z fontsize]"
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvimposetext"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+
+# Text must have been provided 
+if [ -z "$text" ]
+then
+	errmsg="Error: the text to impose must be specified using the -t parameter"
+	errmsg=$errmsg"\nUsage: ptvimposetext -s sourcefile -o outfile -t text [-c color] [-x xpos] [-y ypos] [-z fontsize]"
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvimposetext"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+
+
+
+
+
+# do it
+echo -e "Imposing text and writing output file"
+
+$MAGICK_EXEPATH/convert "$sourcefile" -pointsize $textfontsize -fill $textcolor -draw "text $textxpos,$textypos '$text'" $outfile
+p1=$!
+
+# wait for all threads to conclude and collect their exit codes
+wait $p1
+r1=$?
+
+
+# RETURN - with error if necessary
+
+# p1 Text imposing process - if error, return its exit code
+if [ $r1 != 0 ]
+then
+	exit $r1
+fi
+
+exit 0

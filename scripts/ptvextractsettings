@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+# CREATE QUICKTIME SETTINGS FILE FROM AN EXISTING VIDEO
+# This script creates a QuickTime settings file by extracting the settings from 
+# a video
+#
+# call it like this:
+# ./ptvextractsettings videofilename [path]configfilename
+# 	videofilename is the optional path and required filename of the video file to be 
+#	configfilename is the optional path and require filename of the config file to be written
+# If the config file does not exist, it will be created
+# If the config file exists, it will be overwritten
+#
+# Exits with status 0 on successful completion, 1 if an error occurred
+#
+# requires qt_tools to installed and visible in the path. Uses qt_export from that package
+#
+# qt_tools:	http://omino.com/sw/qt_tools/
+#
+# REVISION HISTORY
+# Created 2009-06-21 by Jim Youll
+#
+
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+
+echo "ptvextractsettings - PTV's QuickTime configuration file creator"
+
+# script must be called with two arguments
+if [ $# != 2 ]
+then
+	echo "Error: Call the script with video file name and config file name (with optional paths), like this:"
+	echo "     ptvsettings [path]videofile.mov [path]mysettings.cfg"
+	exit 1
+fi
+
+videofile=$1
+configfile=$2
+
+# The video file must exist and be readable
+if [ ! -r "$videofile" ]
+then
+	echo "Error: video file '$videofile' does not exist or is not readable."
+	echo "Check file name and permissions. File's directory entry:"
+	echo `ls -la "$videofile"`
+	exit 1
+fi
+
+# If the config file exists, it must be writeable.
+if [ -f $configfile ]
+then
+	if [ ! -w "$configfile" ]
+	then
+		echo "Error: file '$configfile' exists but is not writeable."
+		echo "Check file permissions. File's directory entry:"
+		echo `ls -la $configfile`
+		exit 1
+	fi
+	# file exists and is writeable, so call the script configuration to open it, revise, and save
+	echo "Configuration file '$configfile' exists. Opening."
+	tempfile=$$temp.tmp
+	$EXEPATH/qt_export --savesettings="$configfile" --replacefile "$videofile" "$tempfile"
+	rm "$tempfile"
+else
+	echo "Configuration file does not exist. Will create '$configfile'"
+	touch $configfile
+	if [ $? != 0 ]
+	then
+		echo "Error: could not create file '$configfile'"
+		exit 1
+	fi
+	# file can be created, so call the script config to get settings and save them
+	tempfile=$$temp.tmp
+	$EXEPATH/qt_export --savesettings="$configfile" "$videofile" "$tempfile"
+	rm "$tempfile"
+fi
+

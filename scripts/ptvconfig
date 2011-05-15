@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# Configuration for PTV post-production automation
+
+#################################################
+# Don't change this one
+SCRIPTPATH=`dirname $0`
+#################################################
+
+# THESE SETTINGS ARE USED BY ALL THE SCRIPTS. 
+# Use absolute paths, with no trailing "/". For example:
+#		PROOFSHEETPATH="/Users/robot/ptvpost_media/OUT-Proofsheet
+
+# Top level direcotry where media files are
+MEDIAPATH="/Users/robot/ptvpost_media"
+
+# The directory where new proof sheet images are written
+PROOFSHEETPATH="${MEDIAPATH}/OUT-Proofsheet"
+
+# The directory where new digital-distribution-compressed (Square pixels) videos are written
+DIGITALPATH="${MEDIAPATH}/OUT-Digital"
+
+# The directory where NTSC-compressed (Anamorphic) videos are written
+NTSCPATH="${MEDIAPATH}/OUT-NTSC"
+
+# The directory where PROCESSED originals are moved to after all processing is finished
+PROCESSEDPATH="${MEDIAPATH}/PROCESSED"
+
+
+# Where most of the third party executables are (sendemail, qt_tools, and QTCoffee, should be /usr/local/bin)
+EXEPATH="/usr/local/bin"
+
+# Where ImageMagick executables are installed (probably /opt/local/bin/)
+MAGICK_EXEPATH="/opt/local/bin"
+
+# EMAIL SETTINGS for problem notifications
+EMAIL_FROM="robot@provincetowntv.org"
+EMAIL_TO="jim@agentzero.com"
+EMAIL_SMTP_SERVER="smtp.comcast.net"
+
+# How long the source file (original video) names can be
+# We need some sort of limit so the auto-naming of new files doesn't make the names crazy long
+MAXFILENAMELENGTH=34
+
+
+
+######## ARCHIVE STUFF
+
+###### Connections from the post-production processor to the Media Archive for finished work (formatted and compressed)
+# The address::module on the remote host that we copy finished files to, for example 10.1.10.15::ptvmedia
+REMOTE_HOST_SHARE="10.1.10.15::ptvmedia"
+# Username to use when rsyncing
+REMOTE_HOST_USER="robot"
+# And where the password is stored
+REMOTE_HOST_PWFILE="/Users/robot/.rsyncpw"
+
+###### Connections from the post-production processor to the place that holds copies of PROCESSED originals
+# For now we think this will be a local volume
+PROCESSED_VOLUME="/Volumes/PROCESSED_VIDEOS"
+######################################
+
+
+######### POST PRODUCTION STUFF
+
+
+# Where Production Credit masters are stored
+PRODUCTION_CREDIT_SOURCE_DIR="$SCRIPTPATH/../pcredits/originals"
+# Where temporary production credits should be created - workspace for the final panel with production data on it
+PRODUCTION_CREDIT_WORK_DIR="$SCRIPTPATH/../pcredits/tmp"
+# Pre-processed production credits... all credits except the PTVPOST credit should be pre-processed (using ptvcompress) in every resolution offered in /settings
+PRODUCTION_CREDIT_PROCESSED_DIR="$SCRIPTPATH/../pcredits/preprocessed"
+# The still image master for the PTVPost production credit with production data - should he stored in PRODUCTION_CREDIT_SOURCE_DIR
+PTVPOST_PRODUCTION_CREDIT_STILL="ptvpostcredit09PARsmaller.png"
+# Prefix all movies with the rendered (_suffixed) versions of this file (all versions of this should be in PRODUCTION_CREDIT_PROCESSED_DIR)
+PTVPOST_PRODUCTION_CREDIT_PRE1="ptvlogo720x480x4.mov"
+# A video containing black frames only, to fill where needed (all versions of this should be in PRODUCTION_CREDIT_PROCESSED_DIR)
+PTVPOST_PRODUCTION_CREDIT_BLACK="black-10.mov"
+
+
+# Where to write text onto the production credit
+PTVPOST_PRODUCTION_DATA_XPOS=30
+PTVPOST_PRODUCTION_DATA_YPOS=440
+PTVPOST_PRODUCTION_DATA_FONTSIZE=13
+PTVPOST_PRODUCTION_DATA_FONTCOLOR="#AAAAAA"
+# Date format must be a valid formatting argument to the 'date' command, "+" followed by format characters, see date and strftime
+PTVPOST_PRODUCTION_DATA_DATEFORMAT="+%b %d %Y %H:%M %Z"
+
+
+# THE AUTO PIPELINE SCRIPT (only) USES THESE TO HARD-CODE ITS COMPRESSION CONFIGURATION FILES
+# The auto pipline scripts is
+#	ptvpipelineauto
+# It is called by the Applescript that monitors the incoming queues for work to do
+
+# DIGITAL == square pixel rendering
+# NTSC == NTSC (PAR = 10/11)
+
+# The directory where video settings file are... mine are beside 'scripts'
+SETTINGSPATH="$SCRIPTPATH/../settings"
+
+DIGITAL_SETTINGS_LOW="$SETTINGSPATH/D1Lsd.qtx"
+DIGITAL_SETTINGS_HIGH="$SETTINGSPATH/D1Hsd.qtx"
+
+NTSC_SETTINGS_LOW="$SETTINGSPATH/N1Lsd.qtx"
+NTSC_SETTINGS_HIGH="$SETTINGSPATH/N1Hsd.qtx"

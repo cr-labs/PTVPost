@@ -1,0 +1,227 @@
+#!/bin/bash
+
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+# PTV video post-production automatic pipeline
+# This script runs out a full set of compressed videos and a proofsheet
+#
+# to call, specify high (-h) or low (-l) resolution, and the source file to process
+#
+#	ptvpipeline (-h|-l) -s [path]sourcevideo
+#
+# REVISION HISTORY
+# Created 2009-06-20 by Jim Youll
+# 2009-06-23 JY Added parallel processing; returns with nonzero exit code on any error except proofsheet (we don't care)
+# 2009-06-26 JY Removed some echo statements left from debugging
+
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+
+echo "ptvpipelineauto - PTV's automated post-production pipeline"
+
+# Retrieve command line parameters and check for completeness
+while getopts lhs: options 2> /dev/null    # s: means it requires an argument
+do
+	case $options in
+		l)
+	   		resolution="low"
+	   		digital=$DIGITAL_SETTINGS_LOW
+	   		ntsc=$NTSC_SETTINGS_LOW
+	   		;;
+		h) 
+			resolution="high"
+	   		digital=$DIGITAL_SETTINGS_HIGH
+	   		ntsc=$NTSC_SETTINGS_HIGH
+	   		;;
+	   	s) 
+	   		sourcefile="$OPTARG"
+	   		;;
+	  	\?) echo "Usage: ptvpipelineauto -[l|h] -s filename" 2>& 1
+	  		exit 0;
+	  		;;
+	esac
+done
+
+
+# Get versions of the file name and path to the file
+filenamewithext=${sourcefile##*\/}
+filenamenoext=${filenamewithext%\.*}
+filepath=${sourcefile%/$filenamewithext}
+digitalconfigfilenamewithext=${digital##*\/}
+digitalconfigfilenamenoext=${digitalconfigfilenamewithext%\.*?}
+ntscconfigfilenamewithext=${ntsc##*\/}
+ntscconfigfilenamenoext=${ntscconfigfilenamewithext%\.*?}
+# get the project number from the front of the file. If there are no leading digits, make the file number zero
+productionnum=${filenamenoext%%[^0-9]*}
+if [ "$productionnum" = "" ]
+then
+	productionnum="0"
+fi
+
+echo "resolution: $resolution"
+echo -e "source file: $sourcefile"
+echo "production number $productionnum"
+
+
+# Sourcefile must exist 
+if [ ! -r "$sourcefile" ]
+then
+	errmsg="Error: source file '$sourcefile' does not exist or is not readable"
+	errmsg=$errmsg"\nCheck file name and permissions. File's directory entry:"
+	errmsg=$errmsg"\n"`ls -la "$sourcefile"`
+	errmsg=$errmsg"\nUsage: ptvpipelineauto -[l|h] -s filename" 
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+# Resolution must be selected
+if [ "$resolution" != "low" -a "$resolution" != "high" ]
+then
+	errmsg="Error: compression quality was not set via -l or -h."
+	errmsg=$errmsg"\nUsage: ptvpipelineauto -[l|h] -s filename" 
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+
+# spawn the digital rips first since they are the most time-consuming
+
+# NTSC version
+echo -e "NTSC version"
+$SCRIPTPATH/ptvcompress "$sourcefile" "tmp2" "$ntsc" "$NTSCPATH" &
+p1=$!
+
+
+# Digital version
+echo -e "Digital version"
+$SCRIPTPATH/ptvcompress "$sourcefile" "tmp2" "$digital" "$DIGITALPATH" &
+p2=$!
+
+
+
+# then make incidentals; this is unthreaded since they are quickies
+
+# Proof sheet
+echo -e "Proof sheet"
+$SCRIPTPATH/ptvproofsheet "$sourcefile" "$PROOFSHEETPATH"
+r=$?
+if [ $r != 0 ]
+then
+	echo -e "Error at Proof sheet"
+	exit $r
+fi
+
+# Impose project ID on production credit
+echo -e "Production credit: impose text"
+creditdate=`date "$PTVPOST_PRODUCTION_DATA_DATEFORMAT"`
+productiondata="$productionnum | $ntscconfigfilenamenoext,$digitalconfigfilenamenoext | $creditdate | $filenamewithext"
+$SCRIPTPATH/ptvproductioncredit -s "$PRODUCTION_CREDIT_SOURCE_DIR/$PTVPOST_PRODUCTION_CREDIT_STILL"\
+	-o "$PRODUCTION_CREDIT_WORK_DIR/$productionnum.mov" -t "$productiondata" -d 1 -n "$productionnum"
+r=$?
+if [ $r != 0 ]
+then
+	echo -e "Error at Production credit: impose text"
+	exit $r
+fi
+# When this has finished, then extend the credit into a .mov for appending to the ripped videos
+# Convert the production credit into one version for DIGITAL and one for NTSC
+# There will be two files, named $productionnum_ with "$digitalconfigfilenamenoext" or "ntscconfigfilenamenoext" appended
+$SCRIPTPATH/ptvcompress "$PRODUCTION_CREDIT_WORK_DIR/$productionnum.mov" "tmp" "$ntsc"
+r=$?
+if [ $r != 0 ]
+then
+	echo -e "Error at Production credit: create ntsc movie"
+	exit $r
+fi
+$SCRIPTPATH/ptvcompress "$PRODUCTION_CREDIT_WORK_DIR/$productionnum.mov" "tmp" "$digital"
+rm "$PRODUCTION_CREDIT_WORK_DIR/$productionnum.mov"
+# we now have two production credits that are ready to append (in $PRODUCTION_CREDIT_WORK_DIR) once the main vids are finished
+r=$?
+if [ $r != 0 ]
+then
+	echo -e "Error at Production credit: create digital movie"
+	exit $r
+fi
+
+pcreditDigital="${productionnum}_${digitalconfigfilenamenoext}.tmp"
+pcreditNTSC="${productionnum}_${ntscconfigfilenamenoext}.tmp"
+
+# wait for the threads to conclude
+wait $p1
+wait $p2
+
+# Append the production credits to the rendered movie
+# generate the file names for the PROCESSED pcredit/processed/? video that will be prepended
+prependfileroot1="${PTVPOST_PRODUCTION_CREDIT_PRE1%\.*?}"
+ntscprependfile1="${prependfileroot1}_${ntscconfigfilenamenoext}.mov"
+digitalprependfile1="${prependfileroot1}_${digitalconfigfilenamenoext}.mov"
+
+blackfileroot="${PTVPOST_PRODUCTION_CREDIT_BLACK%\.*?}"
+ntscblackfile="${blackfileroot}_${ntscconfigfilenamenoext}.mov"
+digitalblackfile="${blackfileroot}_${digitalconfigfilenamenoext}.mov"
+
+
+$EXEPATH/catmovie -force-same-tracks\
+	"${PRODUCTION_CREDIT_PROCESSED_DIR}/${ntscprependfile1}"\
+	"${NTSCPATH}/${filenamenoext}_${ntscconfigfilenamenoext}.tmp2" -use-settings\
+	"${PRODUCTION_CREDIT_PROCESSED_DIR}/${ntscblackfile}" -scaleMovieTo 4.0\
+	"${PRODUCTION_CREDIT_WORK_DIR}/${pcreditNTSC}"\
+	"${PRODUCTION_CREDIT_PROCESSED_DIR}/${ntscblackfile}" -scaleMovieTo 1.0\
+	-o "${NTSCPATH}/${filenamenoext}_${ntscconfigfilenamenoext}.mov"\
+	-self-contained &
+p3=$!
+
+$EXEPATH/catmovie -force-same-tracks\
+	"${PRODUCTION_CREDIT_PROCESSED_DIR}/${digitalprependfile1}"\
+	"${DIGITALPATH}/${filenamenoext}_${digitalconfigfilenamenoext}.tmp2" -use-settings\
+	"${PRODUCTION_CREDIT_PROCESSED_DIR}/${digitalblackfile}" -scaleMovieTo 4.0\
+	"${PRODUCTION_CREDIT_WORK_DIR}/${pcreditDigital}"\
+	"${PRODUCTION_CREDIT_PROCESSED_DIR}/${digitalblackfile}" -scaleMovieTo 1.0\
+	-o "${DIGITALPATH}/${filenamenoext}_${digitalconfigfilenamenoext}.mov"\
+	-self-contained &
+p4=$!
+
+wait $p3
+r=$?
+if [ $r != 0 ]
+then
+	echo "error in NTSC build of movie + production credits"
+	exit $r
+fi
+
+wait $p4
+r=$?
+if [ $r != 0 ]
+then
+	echo "error in Digital build of movie + production credits"
+	exit $r
+fi
+
+# remove temporary files
+rm "${DIGITALPATH}/${filenamenoext}_${digitalconfigfilenamenoext}.tmp2"
+rm "${NTSCPATH}/${filenamenoext}_${ntscconfigfilenamenoext}.tmp2"
+rm "${PRODUCTION_CREDIT_WORK_DIR}/${pcreditDigital}"
+rm "${PRODUCTION_CREDIT_WORK_DIR}/${pcreditNTSC}"

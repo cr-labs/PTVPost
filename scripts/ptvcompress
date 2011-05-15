@@ -1,0 +1,193 @@
+#!/bin/bash
+
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+# COMPRESS A VIDEO FILE, USING A QUICKTIME SETTINGS FILE
+# This script uses QuickTime to compress video files, pulling
+# settings from an already-made QuickTime settings file
+#
+# call it like this:
+# ./ptvcompress [path]sourcefile newextension [path]configfile [outpath]
+# where:
+# 	filename is the optional path and required filename of the video file to be compressed
+#	configfile is the optional path and required filename of the quicktime config file to use (set with ptvsettings)
+#	extension is the new extension to place on the output file
+#	outpath is the optional path where the compressed file should be written; if omitted, the directory of the original file is used
+#
+# The file name will be extended with an underscore and the name (no extension) of the config file that was used to 
+# compress it.
+# For example, config file "ABC.cfg" used with "amovie.dv" and extension ".mov" creates:
+#		amovie_ABC.mov
+# The command line for the above would look like this:
+#	ptvcompress amovie.dv mov /path/to/ABC.cfg
+#
+# If a file with the same name as the computed output file name exists, that file will be replaced.
+#
+# Input filename length must be short due to OS or qt_compress limitations
+#
+# The file is created in 'tempfile' then renamed to 'outfile' on completion
+# See the companion script 'ptvsettings' to create and revise the compression settings files.
+#
+# REQUIRES:
+#	qt_tools installed and reachable at $EXEPATH. Uses qt_export from that package.
+# 		qt_tools:	http://omino.com/sw/qt_tools/
+#	sendemail installed and reachable at $EXEPATH.
+#		sendemail: http://caspian.dotconf.net/menu/Software/SendEmail/
+#	Both above prerequisites could be installed in /usr/local/bin
+#
+# REVISION HISTORY
+# Created 2009-06-20 by Jim Youll
+# 2009-06-24 JY now creates a temp file first, then renames it at completion... to overcome a short length limit in qt_export
+# 2009-06-26 JY extracts file number from front of name; uses then when naming the .tmp file while working
+
+
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+MY_PID=$$
+
+echo "ptvcompress - PTV's QuickTime command line compression"
+
+starttime=`date "+%s"`
+
+# script must be called with two or three parameters
+if [ $# != 3 -a $# != 4 ]
+then
+	errmsg="Error: Call the script with the source file, new extension, config file, and output path:"
+	errmsg=$errmsg"\n     ptvcompress [path]sourcefile newextension [path]configfile [outpath]"
+	echo -e "$errmsg"
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+sourcefile=$1
+newextension=$2
+configfile=$3
+
+# Pull out the elements of the path and name
+# if the filename is just a bare filename with no path, prefix with "./" to simplify later parsing
+if [ ${sourcefile:0:1} != '.' -a ${sourcefile:0:1} != '/' ]
+then
+	sourcefile='./'$sourcefile
+fi
+
+if [ ${configfile:0:1} != '.' -a ${configfile:0:1} != '/' ]
+then
+	configfile='./'$configfile
+fi
+
+# Get versions of the file name and path to the file
+filenamewithext=${sourcefile##*\/}
+filenamenoext=${filenamewithext%\.*}
+filepath=${sourcefile%/$filenamewithext}
+
+# Get the file number from the front of the file. If there are no leading digits, make the file number zero
+filenum=${filenamenoext%%[^0-9]*}
+if [ "$filenum" = "" ]
+then
+	filenum="0"
+fi
+
+configfilenamewithext=${configfile##*\/}
+configfilenamenoext=${configfilenamewithext%\.*?}
+
+if [ $# = 4 ]
+then
+	outpath="$4"
+else
+	outpath="$filepath"
+fi
+
+# WORKING AND FINAL FILE NAMES
+tempfile="${outpath}/${filenum}_${MY_PID}_${configfilenamenoext}.tmp"
+outfile="${outpath}/${filenamenoext}_${configfilenamenoext}.${newextension}"
+
+# The source file must exist and be readable
+if [ ! -r "$sourcefile" ]
+then
+	errmsg="Error: source file '$sourcefile' does not exist or is not readable."
+	errmsg=$errmsg"\nCheck file name and permissions. File's directory entry:"
+	errmsg=$errmsg"\n"`ls -la "$sourcefile"`
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+# Source filename length cannot be > MAXFILENAMELENGTH characters (roughly 20 chars + .EXT) due to OS or qt_compress limitations
+if [ ${#filenamewithext} -gt $MAXFILENAMELENGTH ]
+then
+	errmsg="Error: Source file name cannot be more than $MAXFILENAMELENGTH characters"
+	errmsg=$errmsg"\nThis name has ${#filenamewithext} characters: $filenamewithext"
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s "$EMAIL_SMTP_SERVER" -m "$errmsg" 
+	exit 1
+fi
+
+
+# The config file must exist and be readable
+if [ ! -r "$configfile" ]
+then
+	errmsg="Error: QuickTime configuration file '$configfile' does not exist or is not readable."
+	errmsg=$errmsg"\nCheck file name and permissions. File's directory entry:"
+	errmsg=$errmsg"\n"`ls -la "$configfile"`
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s "$EMAIL_SMTP_SERVER" -m "$errmsg" 
+	exit 1
+fi
+
+# If an output directory was specified, it must exist
+if [ ! -d "$outpath" ]
+then
+	errmsg="Error: Output path '$outpath' is not a directory."
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvcompress"  -s "$EMAIL_SMTP_SERVER" -m "$errmsg" 
+	exit 1
+fi
+
+echo Compression files and paths:
+echo "file number		$filenum"
+echo "source file		$sourcefile"
+echo "new extension		$newextension"
+echo "configfile		$configfile"
+echo "temp file			$tempfile"
+echo "output path		$outpath"
+echo "output file		$outfile"
+
+
+
+# do it - convert into a .tmp file, then rename on completion
+$EXEPATH/qt_export --loadsettings="$configfile" --replacefile "$sourcefile" "$tempfile"
+if [ $? != 0 ]
+then
+	exit $?
+fi
+
+mv -f "$tempfile" "$outfile"
+if [ $? != 0 ]
+then
+	exit $?
+fi
+
+endtime=`date "+%s"`
+runtime=`expr $endtime - $starttime`
+echo "run time: $runtime seconds"

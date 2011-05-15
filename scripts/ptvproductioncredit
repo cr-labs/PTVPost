@@ -1,0 +1,125 @@
+#!/bin/bash
+
+
+# COPYRIGHT NOTICE
+# This software is copyright (c) 2009 by Challenge/Response, LLC (Licensor). All rights reserved.
+# Challenge/Response, LLC (info@cr-labs.com) is the sole owner of this software.
+# Unauthorized reuse or redistribution of this software is a violation of copyright law.
+# THIS SOFTWARE IS USED UNDER LICENSE FROM CHALLENGE/RESPONSE, LLC.
+# NO OTHER USE IS PERMITTED EXCEPT THE FOLLOWING SPECIFIC RIGHTS.
+# RIGHTS GRANTED:
+# 1. To install the software on ONE (1) Provincetown Community TV (Licensee) "post-processing computer" 
+# for the sole purpose of processing member/producer and staff-created videos for distribution by
+# Provincetown Community TV; (2) to back-up the software to local media solely to protect against
+# data loss; (3) to run the software to perform post-production processing on member/producer
+# and staff-created videos.
+# PROHIBITIONS:
+# Any and all other uses not expressly mentinoed above under "RIGHTS GRANTED" are prohibited. 
+# Examples of prohibited uses include but are not limited to: redistribution; conveyance to any 
+# party by any means; disassembly; modification; derivative works.
+# VIOLATION
+# In the event of any violation of the terms of this license, all RIGHTS GRANTED shall be immediately
+# terminated and the Licensee shall immediate cease any and all use of the licensed software,
+# destroy all copies in its possession, and certify to the Licensor that it has done so.
+
+
+# Impose text on a still image then turn it into a movie file for appending to a processed video
+#
+# to call:
+# ptvproductioncredit -s stillimage -o outputmovie -t textToImpose -d durationSeconds [-n projectnum]
+# projectnum is only a debugging aid used to track a temp file during production. If omitted, 
+# "0" will be used.
+#
+#
+# REVISION HISTORY
+# Created 2009-07-12 by Jim Youll
+
+MY_PATH=`dirname $0`
+source $MY_PATH/ptvconfig
+
+echo "ptvproductioncredit"
+
+# Retrieve command line parameters and check for completeness
+while getopts s:o:t:d:n: options 2> /dev/null    # s: means it requires an argument
+do
+	case $options in
+	   	s) 
+	   		sourcefile="$OPTARG"
+	   		;;
+	   	o) 
+	   		outfile="$OPTARG"
+	   		;;
+	   	t) 
+	   		text="$OPTARG"
+	   		;;
+	   	d) 
+	   		duration="$OPTARG"
+	   		;;
+	   	n) 
+	   		projectnum="$OPTARG"
+	   		;;
+	  	\?) echo "Usage: ptvproductioncredit -s stillimage -o outputmovie -t textToImpose -d durationSeconds [-n projectnum]" 2>& 1
+	  		exit 0;
+	  		;;
+	esac
+done
+
+
+echo -e "source file: $sourcefile"
+echo -e "output file: $outfile"
+echo -e "text: $text"
+echo -e "duration: $duration"
+echo -e "project number: $projectnum"
+
+# Sourcefile must exist 
+if [ ! -r "$sourcefile" ]
+then
+	errmsg="Error: source file '$sourcefile' does not exist or is not readable"
+	errmsg=$errmsg"\nCheck file name and permissions. File's directory entry:"
+	errmsg=$errmsg"\n"`ls -la "$sourcefile"`
+	errmsg=$errmsg"\nUsage: ptvproductioncredit -s stillimage -o outputmovie -t textToImpose -d durationSeconds" 
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvproductioncredit"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+if [ -z "$outfile" ] 
+then
+	errmsg="Error: output file '$sourcefile' was not provided via the -o argument, or the file is not writable"
+	errmsg=$errmsg"\nUsage: ptvproductioncredit -s stillimage -o outputmovie -t textToImpose -d durationSeconds" 
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvproductioncredit"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+if [ -z "$duration" ] 
+then
+	errmsg="Error: duration '$duration' was not provided via the -d argument"
+	errmsg=$errmsg"\nUsage: ptvproductioncredit -s stillimage -o outputmovie -t textToImpose -d durationSeconds" 
+	echo -e $errmsg
+	$EXEPATH/sendemail -f "$EMAIL_FROM" -t "$EMAIL_TO" -u "Error running ptvproductioncredit"  -s $EMAIL_SMTP_SERVER -m "$errmsg" 
+	exit 1
+fi
+
+
+if [ -z "$projectnum" ]
+then
+	projectnum="0"
+fi
+
+# Generate a temp file for the intermediate image with text overlaid, give it a .png extension so imposetext "just works"
+
+tmpStillImageFile=`mktemp ${PRODUCTION_CREDIT_WORK_DIR}/${projectnum}.XXXXXX` || exit 1
+mv "${tmpStillImageFile}" "${tmpStillImageFile}.png"
+tmpStillImageFile="${tmpStillImageFile}.png"
+
+# Impose text on production credit, write into the temporary file
+$SCRIPTPATH/ptvimposetext  -t "$text" -s "${sourcefile}"\
+	-o "${tmpStillImageFile}" -x $PTVPOST_PRODUCTION_DATA_XPOS -y $PTVPOST_PRODUCTION_DATA_YPOS\
+	-z $PTVPOST_PRODUCTION_DATA_FONTSIZE -c "$PTVPOST_PRODUCTION_DATA_FONTCOLOR"
+
+# Convert the still image into a video with the requested duration
+$EXEPATH/catmovie "${tmpStillImageFile}" -scaleMovieTo ${duration} -o "${outfile}" -self-contained 
+
+# remove the temporary image file
+rm "${tmpStillImageFile}"
